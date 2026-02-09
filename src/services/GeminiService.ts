@@ -1,56 +1,63 @@
 import { GoogleGenAI } from "@google/genai";
 import { FoodItem } from '../types';
+import * as SecureStore from 'expo-secure-store';
 
-// Initialize the client
-// The new SDK uses this configuration object format
-const ai = new GoogleGenAI({
-    apiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY
-});
+// Helper function for mock data
+const getMockData = (foodName: string, verdict: string): FoodItem => {
+    return {
+        id: Date.now().toString(),
+        name: foodName,
+        timestamp: Date.now(),
+        calories: 100,
+        macros: { protein: 5, carbs: 10, fat: 2 },
+        micros: { "Vitamin C": 10 },
+        verdict: `Mock verdict: ${verdict}`
+    };
+};
 
 export const analyzeFood = async (foodName: string): Promise<FoodItem> => {
-    const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+    let apiKey = await SecureStore.getItemAsync('gemini_api_key');
 
+    // Fallback for dev/demo if not found in SecureStore
+    if (!apiKey) {
+        apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+    }
+
+    // Safety check for API Key
     if (!apiKey) {
         console.warn("Gemini API Key is missing. Returning mock data.");
-        return {
-            id: Date.now().toString(),
-            name: foodName,
-            timestamp: Date.now(),
-            calories: 100,
-            macros: { protein: 5, carbs: 10, fat: 2 },
-            micros: { "Vitamin C": 10 },
-            verdict: "Mock verdict: Key missing."
-        };
+        return getMockData(foodName, "No API Key found. Please setup in Settings.");
     }
-
-    const prompt = `
-    Analyze the following food item: "${foodName}".
-    Return a JSON object with this exact structure:
-    {
-      "calories": number,
-      "macros": { "protein": number, "carbs": number, "fat": number },
-      "micros": { "item_name": number },
-      "verdict": "string",
-      "name": "string"
-    }
-    Strictly return valid JSON.
-    `;
 
     try {
-        // Using the exact structure from your documentation snippet
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash", // Use stable 'gemini-2.0-flash' or your 'gemini-3-flash-preview'
+        const client = new GoogleGenAI({ apiKey });
+
+        const prompt = `
+        Analyze the following food item: "${foodName}".
+        Return a JSON object with this exact structure:
+        {
+            "calories": number,
+            "macros": { "protein": number, "carbs": number, "fat": number },
+            "micros": { "item_name": number },
+            "verdict": "string",
+            "name": "string"
+        }
+        Strictly return valid JSON. Do not include markdown code blocks.
+        `;
+
+        const response = await client.models.generateContent({
+            model: "gemini-2.5-flash",
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
             },
         });
 
-        // FIX: Access .text as a property and handle the "undefined" case
-        const jsonStr = response.text;
+        const responseText = response.text || "";
+        const jsonStr = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
 
         if (!jsonStr) {
-            throw new Error("Gemini returned an empty response (check safety settings).");
+            throw new Error("Gemini returned an empty response.");
         }
 
         const data = JSON.parse(jsonStr);
@@ -71,6 +78,6 @@ export const analyzeFood = async (foodName: string): Promise<FoodItem> => {
 
     } catch (error) {
         console.error("Error analyzing food with Gemini:", error);
-        throw error;
+        return getMockData(foodName, "Analysis failed. Using mock data.");
     }
 };
