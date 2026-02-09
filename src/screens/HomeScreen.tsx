@@ -4,7 +4,7 @@ import { Text, FAB, Card, ProgressBar, useTheme, TextInput } from 'react-native-
 import { useApp } from '../context/AppContext';
 import { FoodList } from '../components/FoodList';
 import { useAuth } from '../context/AuthContext';
-import { getWeightLog, upsertWeightLog } from '../services/FoodLogService';
+import { getWeightLog, upsertWeightLog, deleteFoodLog } from '../services/FoodLogService';
 import { format } from 'date-fns';
 
 export const HomeScreen = ({ navigation }: any) => {
@@ -104,7 +104,12 @@ export const HomeScreen = ({ navigation }: any) => {
         <View style={styles.container}>
             <FoodList
                 items={dailyItems}
-                onRemoveItem={() => { }}
+                onRemoveItem={async (id) => {
+                    if (userClient) {
+                        await deleteFoodLog(userClient, id);
+                        refreshData();
+                    }
+                }}
                 ListHeaderComponent={renderHeader()}
                 contentContainerStyle={styles.content}
             />
